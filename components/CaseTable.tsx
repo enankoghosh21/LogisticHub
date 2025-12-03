@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { LogisticsCase } from '../types';
 import { 
   AlertTriangle, Clock, X, Package, 
-  Truck, Download, ChevronRight, Calendar
+  Truck, Download, ChevronRight, Calendar,
+  ArrowUpDown, ArrowUp, ArrowDown
 } from 'lucide-react';
 import { format } from 'date-fns';
 import * as XLSX from 'xlsx';
@@ -14,15 +15,52 @@ interface CaseTableProps {
 export const CaseTable: React.FC<CaseTableProps> = ({ cases }) => {
   const [selectedCase, setSelectedCase] = useState<LogisticsCase | null>(null);
   const [isFullTableOpen, setIsFullTableOpen] = useState(false);
+  const [sortConfig, setSortConfig] = useState<{ key: keyof LogisticsCase; direction: 'asc' | 'desc' } | null>(null);
 
-  // Filter for open cases, sort by date (newest first) for the feed
-  const openCases = cases
-    .filter(c => c.isOpen)
-    .sort((a, b) => b.calculatedPendency - a.calculatedPendency);
+  // Filter for open cases
+  const baseOpenCases = useMemo(() => cases.filter(c => c.isOpen), [cases]);
+
+  // Feed View: Always sort by highest pendency (Priority)
+  const feedCases = useMemo(() => {
+    return [...baseOpenCases].sort((a, b) => b.calculatedPendency - a.calculatedPendency);
+  }, [baseOpenCases]);
+
+  // Full Table View: Allow sorting
+  const tableCases = useMemo(() => {
+    let sortableItems = [...baseOpenCases];
+    if (sortConfig !== null) {
+      sortableItems.sort((a, b) => {
+        // @ts-ignore
+        const aValue = a[sortConfig.key];
+        // @ts-ignore
+        const bValue = b[sortConfig.key];
+        
+        if (aValue < bValue) {
+          return sortConfig.direction === 'asc' ? -1 : 1;
+        }
+        if (aValue > bValue) {
+          return sortConfig.direction === 'asc' ? 1 : -1;
+        }
+        return 0;
+      });
+    } else {
+        // Default sort for table: highest pendency first
+        sortableItems.sort((a, b) => b.calculatedPendency - a.calculatedPendency);
+    }
+    return sortableItems;
+  }, [baseOpenCases, sortConfig]);
+
+  const requestSort = (key: keyof LogisticsCase) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
 
   const handleExport = () => {
-    if (openCases.length === 0) return;
-    const exportData = openCases.map(c => ({
+    if (tableCases.length === 0) return;
+    const exportData = tableCases.map(c => ({
       "Registration Date": c.registrationDate ? format(c.registrationDate, 'yyyy-MM-dd') : '',
       "Customer Name": c.customerName,
       "Order Number": c.orderNumber,
@@ -55,7 +93,7 @@ export const CaseTable: React.FC<CaseTableProps> = ({ cases }) => {
         </div>
 
         <div className="space-y-3 flex-1 overflow-y-auto custom-scrollbar pr-2 max-h-[600px]">
-            {openCases.slice(0, 6).map((c) => (
+            {feedCases.slice(0, 6).map((c) => (
                 <div 
                     key={c.id}
                     onClick={() => setSelectedCase(c)}
@@ -83,7 +121,7 @@ export const CaseTable: React.FC<CaseTableProps> = ({ cases }) => {
                     </div>
                 </div>
             ))}
-            {openCases.length === 0 && (
+            {feedCases.length === 0 && (
                 <div className="text-center py-12 bg-white rounded-3xl border border-slate-100 border-dashed">
                     <p className="text-slate-400 text-sm font-medium">No active cases found.</p>
                 </div>
@@ -98,7 +136,7 @@ export const CaseTable: React.FC<CaseTableProps> = ({ cases }) => {
                 <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-white z-10">
                     <div>
                         <h2 className="text-2xl font-bold text-slate-900">Active Cases</h2>
-                        <p className="text-slate-500 mt-1 font-medium">Viewing all {openCases.length} pending orders requiring attention</p>
+                        <p className="text-slate-500 mt-1 font-medium">Viewing {tableCases.length} pending orders</p>
                     </div>
                     <div className="flex items-center gap-3">
                         <button onClick={handleExport} className="flex items-center gap-2 px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-sm font-bold transition-colors">
@@ -121,21 +159,46 @@ export const CaseTable: React.FC<CaseTableProps> = ({ cases }) => {
                                     <th className="p-5">Issue Type</th>
                                     <th className="p-5">Priority</th>
                                     <th className="p-5">Deadline</th>
-                                    <th className="p-5 text-right">Pendency</th>
+                                    <th 
+                                        className="p-5 text-right cursor-pointer group hover:bg-slate-100 transition-colors select-none"
+                                        onClick={() => requestSort('calculatedPendency')}
+                                    >
+                                        <div className="flex items-center justify-end gap-2">
+                                            Pendency
+                                            {sortConfig?.key === 'calculatedPendency' ? (
+                                                sortConfig.direction === 'asc' ? <ArrowUp className="w-4 h-4 text-blue-600" /> : <ArrowDown className="w-4 h-4 text-blue-600" />
+                                            ) : (
+                                                <ArrowUpDown className="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition-colors" />
+                                            )}
+                                        </div>
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 bg-white">
-                                {openCases.map(c => (
+                                {tableCases.map(c => {
+                                    // Visual highlight logic for high pendency
+                                    const isLongPending = c.calculatedPendency > 10;
+                                    
+                                    return (
                                     <tr 
                                         key={c.id} 
                                         onClick={() => setSelectedCase(c)} 
-                                        className="group transition-all duration-200 cursor-pointer hover:bg-blue-50/20 hover:shadow-lg hover:-translate-y-1 hover:z-10 relative"
+                                        className={`group transition-all duration-200 cursor-pointer hover:shadow-lg hover:-translate-y-1 hover:z-10 relative
+                                            ${isLongPending 
+                                                ? 'bg-orange-50/50 hover:bg-orange-100/60 border-l-4 border-orange-400' 
+                                                : 'bg-white hover:bg-blue-50/30 border-l-4 border-transparent'
+                                            }
+                                        `}
                                     >
                                         <td className="p-5 font-medium">{c.registrationDate ? format(c.registrationDate, 'MMM dd, yyyy') : '-'}</td>
                                         <td className="p-5 font-medium text-slate-900">{c.customerName}</td>
                                         <td className="p-5 font-mono text-xs">{c.orderNumber}</td>
                                         <td className="p-5 max-w-xs truncate">
-                                            <span className="inline-block px-2.5 py-1 bg-slate-100 text-slate-600 rounded-md text-xs font-medium border border-slate-200 group-hover:bg-white group-hover:border-blue-100 transition-colors">
+                                            <span className={`inline-block px-2.5 py-1 rounded-md text-xs font-medium border transition-colors
+                                                ${isLongPending 
+                                                    ? 'bg-white border-orange-200 text-orange-700' 
+                                                    : 'bg-slate-100 border-slate-200 text-slate-600 group-hover:bg-white group-hover:border-blue-100'
+                                                }`}>
                                                 {c.abnormalType}
                                             </span>
                                         </td>
@@ -151,12 +214,16 @@ export const CaseTable: React.FC<CaseTableProps> = ({ cases }) => {
                                         </td>
                                         <td className="p-5 text-slate-500">{c.handlingDdl || '-'}</td>
                                         <td className="p-5 text-right">
-                                            <span className={`inline-block px-3 py-1.5 rounded-lg font-bold transition-all duration-300 ${c.calculatedPendency > 10 ? 'text-orange-500' : 'text-slate-900'} group-hover:bg-blue-100 group-hover:text-blue-700`}>
+                                            <span className={`inline-block px-3 py-1.5 rounded-lg font-bold transition-all duration-300 group-hover:bg-opacity-100
+                                                ${isLongPending 
+                                                    ? 'text-orange-600 bg-orange-100 group-hover:bg-white group-hover:shadow-sm' 
+                                                    : 'text-slate-900 group-hover:bg-blue-100 group-hover:text-blue-700'
+                                                }`}>
                                                 {c.calculatedPendency} Days
                                             </span>
                                         </td>
                                     </tr>
-                                ))}
+                                )})}
                             </tbody>
                          </table>
                      </div>
@@ -257,3 +324,15 @@ export const CaseTable: React.FC<CaseTableProps> = ({ cases }) => {
                      </div>
                 </div>
             </div>
+        </div>
+      )}
+    </>
+  );
+};
+
+const DetailRow: React.FC<{label: string, value: any}> = ({label, value}) => (
+    <div className="flex justify-between items-center py-2 border-b border-slate-50 last:border-0">
+        <span className="text-slate-500 text-sm font-medium">{label}</span>
+        <span className="font-bold text-slate-900 text-sm text-right">{value || '-'}</span>
+    </div>
+);
