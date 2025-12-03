@@ -1,0 +1,5 @@
+{
+  "name": "Logistic Hub",
+  "description": "A logistics tracking dashboard to monitor case pendency, identify bottlenecks, and manage emergency logistics issues using Excel data and AI analysis.",
+  "requestFramePermissions": []
+}
