@@ -60,7 +60,7 @@ export const CaseFeed: React.FC<CaseFeedProps> = ({ cases, onCaseClick, onSeeAll
                     </div>
 
                     <div className="text-right relative z-10">
-                        <p className={`text-sm font-extrabold ${c.calculatedPendency > 10 ? 'text-orange-500' : 'text-slate-700'}`}>{c.calculatedPendency} days</p>
+                        <p className={`text-sm font-extrabold ${c.calculatedPendency > 10 ? 'text-red-500' : 'text-slate-700'}`}>{c.calculatedPendency} days</p>
                         <p className="text-xs text-slate-400 font-semibold uppercase tracking-wide">Pending</p>
                     </div>
                 </div>
@@ -264,7 +264,7 @@ export const FullTableModal: React.FC<FullTableModalProps> = ({ isOpen, onClose,
                                         onClick={() => onCaseClick(c)} 
                                         className={`group transition-all duration-200 cursor-pointer hover:shadow-lg hover:-translate-y-1 hover:z-10 relative
                                             ${isLongPending 
-                                                ? 'bg-orange-50/50 hover:bg-orange-100/60 border-l-4 border-orange-400' 
+                                                ? 'bg-red-50 border-l-4 border-red-500 hover:bg-red-100' 
                                                 : isResolved
                                                     ? 'bg-slate-50/30 hover:bg-emerald-50/30 border-l-4 border-transparent hover:border-emerald-300'
                                                     : 'bg-white hover:bg-blue-50/30 border-l-4 border-transparent'
@@ -279,7 +279,7 @@ export const FullTableModal: React.FC<FullTableModalProps> = ({ isOpen, onClose,
                                                 ${isResolved
                                                     ? 'bg-emerald-50 border-emerald-100 text-emerald-600'
                                                     : isLongPending 
-                                                        ? 'bg-white border-orange-200 text-orange-700' 
+                                                        ? 'bg-white border-red-200 text-red-700' 
                                                         : 'bg-slate-100 border-slate-200 text-slate-600 group-hover:bg-white group-hover:border-blue-100'
                                                 }`}>
                                                 {c.abnormalType}
@@ -313,7 +313,7 @@ export const FullTableModal: React.FC<FullTableModalProps> = ({ isOpen, onClose,
                                                 ${isResolved
                                                     ? 'text-slate-600 bg-slate-100 group-hover:bg-emerald-100 group-hover:text-emerald-700'
                                                     : isLongPending 
-                                                        ? 'text-orange-600 bg-orange-100 group-hover:bg-white group-hover:shadow-sm' 
+                                                        ? 'text-red-700 bg-red-100 group-hover:bg-white group-hover:shadow-sm' 
                                                         : 'text-slate-900 group-hover:bg-blue-100 group-hover:text-blue-700'
                                                 }`}>
                                                 {c.calculatedPendency} Days
