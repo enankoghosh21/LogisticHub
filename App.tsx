@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { FileUpload } from './components/FileUpload';
 import { OverviewWidget } from './components/StatsCard';
-import { PendencyChart } from './components/Charts';
-import { CaseTable } from './components/CaseTable';
+import { PendencyChart, BottleneckChart } from './components/Charts';
+import { CaseFeed, FullTableModal, CaseDetailModal } from './components/CaseTable';
 import { processRawData } from './utils/dataProcessor';
 import { LogisticsCase } from './types';
 import { 
@@ -15,6 +15,10 @@ import {
 const App: React.FC = () => {
   const [data, setData] = useState<LogisticsCase[]>([]);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  
+  // Modal State
+  const [selectedCase, setSelectedCase] = useState<LogisticsCase | null>(null);
+  const [activeFilter, setActiveFilter] = useState<'total' | 'open' | 'closed' | null>(null);
 
   // Computed Statistics
   const stats = useMemo(() => {
@@ -42,7 +46,28 @@ const App: React.FC = () => {
   const resetData = () => {
     setData([]);
     setLastUpdated(null);
+    setActiveFilter(null);
+    setSelectedCase(null);
   };
+
+  const handleFilterClick = (filter: 'total' | 'open' | 'closed') => {
+    setActiveFilter(filter);
+  };
+
+  // Derived data for the modal table
+  const modalData = useMemo(() => {
+    if (activeFilter === 'total') return data;
+    if (activeFilter === 'open') return data.filter(c => c.isOpen);
+    if (activeFilter === 'closed') return data.filter(c => !c.isOpen);
+    return [];
+  }, [data, activeFilter]);
+
+  const modalTitle = useMemo(() => {
+    if (activeFilter === 'total') return 'All Cases';
+    if (activeFilter === 'open') return 'Active Cases';
+    if (activeFilter === 'closed') return 'Resolved Cases';
+    return '';
+  }, [activeFilter]);
 
   const emergencyCount = stats.emergencyCases.length;
 
@@ -59,13 +84,16 @@ const App: React.FC = () => {
          </div>
 
          {data.length > 0 && (
-            <button 
-                onClick={resetData}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 hover:text-slate-900 rounded-lg transition-colors"
-            >
-                <RefreshCcw className="w-4 h-4" />
-                <span>Upload New File</span>
-            </button>
+            <div className="flex items-center gap-4">
+                {lastUpdated && <span className="text-xs text-slate-400 font-medium hidden sm:block">Updated {lastUpdated.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>}
+                <button 
+                    onClick={resetData}
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 hover:text-slate-900 rounded-lg transition-colors"
+                >
+                    <RefreshCcw className="w-4 h-4" />
+                    <span>Upload New File</span>
+                </button>
+            </div>
          )}
       </nav>
 
@@ -91,7 +119,12 @@ const App: React.FC = () => {
                     <PendencyChart data={data} avgPendency={stats.avgPendency} />
                 </div>
 
-                {/* 2. Emergency Card */}
+                {/* 2. Bottleneck Analysis Chart */}
+                <div className="min-h-[350px]">
+                    <BottleneckChart data={data} />
+                </div>
+
+                {/* 3. Emergency Card */}
                 <div className="w-full">
                     <div className="bg-gradient-to-br from-red-500 to-rose-600 p-8 rounded-[2rem] shadow-xl shadow-red-200 flex flex-col md:flex-row justify-between items-center relative overflow-hidden group">
                         
@@ -127,11 +160,13 @@ const App: React.FC = () => {
                                 )}
                              </div>
                              
-                             {/* Placeholder for action, since scrolling to list handles it */}
-                             <div className="flex items-center gap-2 text-xs font-semibold text-white/80 bg-white/10 px-4 py-2 rounded-full backdrop-blur-md">
-                                 <span>Check Case Feed</span>
+                             <button 
+                                onClick={() => setActiveFilter('open')}
+                                className="flex items-center gap-2 text-xs font-semibold text-white/80 bg-white/10 px-4 py-2 rounded-full backdrop-blur-md hover:bg-white/20 transition-colors"
+                             >
+                                 <span>View Active Cases</span>
                                  <ArrowRight className="w-3 h-3" />
-                             </div>
+                             </button>
                         </div>
                     </div>
                 </div>
@@ -147,16 +182,39 @@ const App: React.FC = () => {
                         open: stats.openCases, 
                         closed: stats.closedCases 
                     }} 
+                    onFilterClick={handleFilterClick}
                  />
 
                  {/* 2. Recent Cases Feed */}
                  <div className="flex-1 bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 min-h-[400px]">
-                    <CaseTable cases={data} />
+                    <CaseFeed 
+                        cases={data} 
+                        onCaseClick={setSelectedCase}
+                        onSeeAll={() => setActiveFilter('open')}
+                    />
                  </div>
 
              </div>
           </div>
         )}
+
+        {/* --- MODALS --- */}
+        
+        {/* Full Data Table Modal */}
+        <FullTableModal 
+            isOpen={activeFilter !== null}
+            onClose={() => setActiveFilter(null)}
+            data={modalData}
+            title={modalTitle}
+            onCaseClick={setSelectedCase}
+        />
+
+        {/* Case Detail Modal */}
+        <CaseDetailModal 
+            caseItem={selectedCase}
+            onClose={() => setSelectedCase(null)}
+        />
+
       </main>
     </div>
   );
