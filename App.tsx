@@ -206,6 +206,7 @@ const App: React.FC = () => {
             onClose={() => setActiveFilter(null)}
             data={modalData}
             title={modalTitle}
+            filterType={activeFilter}
             onCaseClick={setSelectedCase}
         />
 

@@ -4,9 +4,9 @@ import {
   AlertTriangle, Clock, X, Package, 
   Truck, Download, ChevronRight, Calendar,
   ArrowUpDown, ArrowUp, ArrowDown, CheckCircle2,
-  ChevronLeft
+  ChevronLeft, Filter
 } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, isWithinInterval, startOfDay, endOfDay, parseISO } from 'date-fns';
 import * as XLSX from 'xlsx';
 
 // --- COMPONENT: CASE FEED (WIDGET) ---
@@ -82,25 +82,47 @@ interface FullTableModalProps {
   onClose: () => void;
   data: LogisticsCase[];
   title: string;
+  filterType: 'total' | 'open' | 'closed' | null;
   onCaseClick: (c: LogisticsCase) => void;
 }
 
-export const FullTableModal: React.FC<FullTableModalProps> = ({ isOpen, onClose, data, title, onCaseClick }) => {
+export const FullTableModal: React.FC<FullTableModalProps> = ({ isOpen, onClose, data, title, filterType, onCaseClick }) => {
   const [sortConfig, setSortConfig] = useState<{ key: keyof LogisticsCase; direction: 'asc' | 'desc' } | null>(null);
   
+  // Date Filtering State
+  const [startDate, setStartDate] = useState<string>('');
+  const [endDate, setEndDate] = useState<string>('');
+
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
-  // Reset pagination when data or sort changes
+  const isResolvedView = filterType === 'closed';
+
+  // Reset pagination when data or filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [data, sortConfig, title]);
+  }, [data, sortConfig, title, startDate, endDate]);
 
   const tableCases = useMemo(() => {
-    let sortableItems = [...data];
+    let filteredItems = [...data];
+
+    // Apply Date Filter
+    if (startDate || endDate) {
+      const start = startDate ? startOfDay(parseISO(startDate)) : null;
+      const end = endDate ? endOfDay(parseISO(endDate)) : null;
+
+      filteredItems = filteredItems.filter(c => {
+        if (!c.registrationDate) return false;
+        if (start && c.registrationDate < start) return false;
+        if (end && c.registrationDate > end) return false;
+        return true;
+      });
+    }
+
+    // Apply Sorting
     if (sortConfig !== null) {
-      sortableItems.sort((a, b) => {
+      filteredItems.sort((a, b) => {
         // @ts-ignore
         const aValue = a[sortConfig.key];
         // @ts-ignore
@@ -116,10 +138,10 @@ export const FullTableModal: React.FC<FullTableModalProps> = ({ isOpen, onClose,
       });
     } else {
         // Default sort: highest pendency first for active, or recent registration
-        sortableItems.sort((a, b) => b.calculatedPendency - a.calculatedPendency);
+        filteredItems.sort((a, b) => b.calculatedPendency - a.calculatedPendency);
     }
-    return sortableItems;
-  }, [data, sortConfig]);
+    return filteredItems;
+  }, [data, sortConfig, startDate, endDate]);
 
   // Pagination Logic
   const totalPages = Math.ceil(tableCases.length / itemsPerPage);
@@ -147,6 +169,7 @@ export const FullTableModal: React.FC<FullTableModalProps> = ({ isOpen, onClose,
       "Order Status": c.orderStatus,
       "Handling DDL": c.handlingDdl,
       "Updated ETA": c.updatedEta,
+      "Close Date": c.caseCloseDate ? format(c.caseCloseDate, 'yyyy-MM-dd') : '',
       "Emergency": c.isEmergency ? "Yes" : "No"
     }));
     const ws = XLSX.utils.json_to_sheet(exportData);
@@ -160,12 +183,35 @@ export const FullTableModal: React.FC<FullTableModalProps> = ({ isOpen, onClose,
   return (
     <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 sm:p-8 animate-fade-in" onClick={onClose}>
         <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-7xl h-[90vh] flex flex-col overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
-            <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-white z-10">
+            <div className="p-8 border-b border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center bg-white z-10 gap-4">
                 <div>
                     <h2 className="text-2xl font-bold text-slate-900">{title}</h2>
                     <p className="text-slate-500 mt-1 font-medium">Viewing {tableCases.length} records</p>
                 </div>
-                <div className="flex items-center gap-3">
+                
+                <div className="flex flex-wrap items-center gap-3">
+                    {/* Date Filters */}
+                    <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200">
+                      <div className="text-slate-400">
+                        <Filter className="w-4 h-4" />
+                      </div>
+                      <input 
+                        type="date" 
+                        value={startDate}
+                        onChange={(e) => setStartDate(e.target.value)}
+                        className="bg-transparent text-sm font-medium text-slate-600 outline-none focus:text-blue-600 cursor-pointer"
+                        placeholder="Start Date"
+                      />
+                      <span className="text-slate-300">-</span>
+                      <input 
+                        type="date" 
+                        value={endDate}
+                        onChange={(e) => setEndDate(e.target.value)}
+                        className="bg-transparent text-sm font-medium text-slate-600 outline-none focus:text-blue-600 cursor-pointer"
+                        placeholder="End Date"
+                      />
+                    </div>
+
                     <button onClick={handleExport} className="flex items-center gap-2 px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-sm font-bold transition-colors">
                         <Download className="w-4 h-4" /> Export CSV
                     </button>
@@ -187,13 +233,17 @@ export const FullTableModal: React.FC<FullTableModalProps> = ({ isOpen, onClose,
                                     <th className="p-5 bg-slate-50">Order #</th>
                                     <th className="p-5 bg-slate-50">Issue Type</th>
                                     <th className="p-5 bg-slate-50">Status</th>
-                                    <th className="p-5 bg-slate-50">Deadline</th>
+                                    {/* Dynamic Column: Deadline OR Close Date */}
+                                    <th className="p-5 bg-slate-50">
+                                        {isResolvedView ? 'Close Date' : 'Deadline'}
+                                    </th>
+                                    {/* Dynamic Column: Pendency OR Time to Close */}
                                     <th 
                                         className="p-5 text-right cursor-pointer group hover:bg-slate-100 transition-colors select-none bg-slate-50"
                                         onClick={() => requestSort('calculatedPendency')}
                                     >
                                         <div className="flex items-center justify-end gap-2">
-                                            Pendency
+                                            {isResolvedView ? 'Time to Close' : 'Pendency'}
                                             {sortConfig?.key === 'calculatedPendency' ? (
                                                 sortConfig.direction === 'asc' ? <ArrowUp className="w-4 h-4 text-blue-600" /> : <ArrowDown className="w-4 h-4 text-blue-600" />
                                             ) : (
@@ -250,11 +300,18 @@ export const FullTableModal: React.FC<FullTableModalProps> = ({ isOpen, onClose,
                                                 </span>
                                             )}
                                         </td>
-                                        <td className="p-5 text-slate-500">{c.handlingDdl || '-'}</td>
+                                        {/* Dynamic Date Cell */}
+                                        <td className="p-5 text-slate-500">
+                                            {isResolved 
+                                                ? (c.caseCloseDate ? format(c.caseCloseDate, 'MMM dd, yyyy') : '-') 
+                                                : (c.handlingDdl || '-')
+                                            }
+                                        </td>
+                                        {/* Dynamic Value Cell */}
                                         <td className="p-5 text-right">
                                             <span className={`inline-block px-3 py-1.5 rounded-lg font-bold transition-all duration-300 group-hover:bg-opacity-100
                                                 ${isResolved
-                                                    ? 'text-slate-400 bg-slate-100'
+                                                    ? 'text-slate-600 bg-slate-100 group-hover:bg-emerald-100 group-hover:text-emerald-700'
                                                     : isLongPending 
                                                         ? 'text-orange-600 bg-orange-100 group-hover:bg-white group-hover:shadow-sm' 
                                                         : 'text-slate-900 group-hover:bg-blue-100 group-hover:text-blue-700'
@@ -327,6 +384,8 @@ interface CaseDetailModalProps {
 
 export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({ caseItem, onClose }) => {
     if (!caseItem) return null;
+    
+    const isResolved = !caseItem.isOpen;
 
     return (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4 animate-fade-in" onClick={onClose}>
@@ -335,15 +394,20 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({ caseItem, onCl
                 {/* Header with Emergency Badge */}
                 <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-white relative">
                     <div className="flex items-center gap-5">
-                        <div className={`p-4 rounded-2xl shadow-sm ${caseItem.isEmergency ? 'bg-red-50 text-red-500' : 'bg-blue-50 text-blue-600'}`}>
-                            {caseItem.isEmergency ? <AlertTriangle className="w-8 h-8" /> : <Package className="w-8 h-8" />}
+                        <div className={`p-4 rounded-2xl shadow-sm ${isResolved ? 'bg-emerald-50 text-emerald-600' : caseItem.isEmergency ? 'bg-red-50 text-red-500' : 'bg-blue-50 text-blue-600'}`}>
+                            {isResolved ? <CheckCircle2 className="w-8 h-8" /> : caseItem.isEmergency ? <AlertTriangle className="w-8 h-8" /> : <Package className="w-8 h-8" />}
                         </div>
                         <div>
                             <div className="flex items-center gap-3">
                                 <h3 className="text-2xl font-bold text-slate-900">Order #{caseItem.orderNumber}</h3>
-                                {caseItem.isEmergency && (
+                                {caseItem.isEmergency && !isResolved && (
                                     <span className="px-3 py-1 bg-red-500 text-white text-[10px] font-bold uppercase tracking-widest rounded-full animate-pulse shadow-red-200 shadow-lg">
                                         Emergency
+                                    </span>
+                                )}
+                                {isResolved && (
+                                    <span className="px-3 py-1 bg-emerald-100 text-emerald-700 text-[10px] font-bold uppercase tracking-widest rounded-full">
+                                        Resolved
                                     </span>
                                 )}
                             </div>
@@ -359,35 +423,61 @@ export const CaseDetailModal: React.FC<CaseDetailModalProps> = ({ caseItem, onCl
                      
                      {/* Highlighted Dates Section */}
                      <div className="flex flex-col sm:flex-row gap-6 p-6 bg-slate-50 rounded-2xl border border-slate-100">
-                        <div className="flex-1">
-                            <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Handling Deadline</span>
-                            <div className="flex items-center gap-3 mt-2">
-                                 <div className="p-2 bg-white rounded-lg shadow-sm border border-slate-100">
-                                    <Clock className="w-4 h-4 text-orange-500" />
-                                 </div>
-                                 <span className="text-lg font-bold text-slate-900">{caseItem.handlingDdl || '-'}</span>
-                            </div>
-                        </div>
-                        <div className="w-px bg-slate-200 hidden sm:block"></div>
-                        <div className="flex-1">
-                            <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Updated ETA</span>
-                            <div className="flex items-center gap-3 mt-2">
-                                 <div className="p-2 bg-white rounded-lg shadow-sm border border-slate-100">
-                                    <Truck className="w-4 h-4 text-blue-500" />
-                                 </div>
-                                 <span className="text-lg font-bold text-slate-900">{caseItem.updatedEta || '-'}</span>
-                            </div>
-                        </div>
-                        <div className="w-px bg-slate-200 hidden sm:block"></div>
-                        <div className="flex-1">
-                            <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Current Pendency</span>
-                             <div className="flex items-center gap-3 mt-2">
-                                 <div className="p-2 bg-white rounded-lg shadow-sm border border-slate-100">
-                                    <Calendar className="w-4 h-4 text-slate-500" />
-                                 </div>
-                                 <span className="text-lg font-bold text-slate-900">{caseItem.calculatedPendency} Days</span>
-                            </div>
-                        </div>
+                        {isResolved ? (
+                            <>
+                                <div className="flex-1">
+                                    <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Case Closed Date</span>
+                                    <div className="flex items-center gap-3 mt-2">
+                                        <div className="p-2 bg-white rounded-lg shadow-sm border border-slate-100">
+                                            <Calendar className="w-4 h-4 text-emerald-500" />
+                                        </div>
+                                        <span className="text-lg font-bold text-slate-900">{caseItem.caseCloseDate ? format(caseItem.caseCloseDate, 'MMM dd, yyyy') : '-'}</span>
+                                    </div>
+                                </div>
+                                <div className="w-px bg-slate-200 hidden sm:block"></div>
+                                <div className="flex-1">
+                                    <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Time to Resolve</span>
+                                    <div className="flex items-center gap-3 mt-2">
+                                        <div className="p-2 bg-white rounded-lg shadow-sm border border-slate-100">
+                                            <Clock className="w-4 h-4 text-slate-500" />
+                                        </div>
+                                        <span className="text-lg font-bold text-slate-900">{caseItem.calculatedPendency} Days</span>
+                                    </div>
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <div className="flex-1">
+                                    <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Handling Deadline</span>
+                                    <div className="flex items-center gap-3 mt-2">
+                                        <div className="p-2 bg-white rounded-lg shadow-sm border border-slate-100">
+                                            <Clock className="w-4 h-4 text-orange-500" />
+                                        </div>
+                                        <span className="text-lg font-bold text-slate-900">{caseItem.handlingDdl || '-'}</span>
+                                    </div>
+                                </div>
+                                <div className="w-px bg-slate-200 hidden sm:block"></div>
+                                <div className="flex-1">
+                                    <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Updated ETA</span>
+                                    <div className="flex items-center gap-3 mt-2">
+                                        <div className="p-2 bg-white rounded-lg shadow-sm border border-slate-100">
+                                            <Truck className="w-4 h-4 text-blue-500" />
+                                        </div>
+                                        <span className="text-lg font-bold text-slate-900">{caseItem.updatedEta || '-'}</span>
+                                    </div>
+                                </div>
+                                <div className="w-px bg-slate-200 hidden sm:block"></div>
+                                <div className="flex-1">
+                                    <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Current Pendency</span>
+                                    <div className="flex items-center gap-3 mt-2">
+                                        <div className="p-2 bg-white rounded-lg shadow-sm border border-slate-100">
+                                            <Calendar className="w-4 h-4 text-slate-500" />
+                                        </div>
+                                        <span className="text-lg font-bold text-slate-900">{caseItem.calculatedPendency} Days</span>
+                                    </div>
+                                </div>
+                            </>
+                        )}
                      </div>
 
                      <div className="grid grid-cols-1 md:grid-cols-2 gap-10">

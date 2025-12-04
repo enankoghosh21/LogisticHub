@@ -49,16 +49,28 @@ export const processRawData = (jsonData: any[]): LogisticsCase[] => {
     // Parse Handling DDL (Col O - index 14) and Updated ETA (Col R - index 17)
     const handlingDdlDate = parseExcelDate(row[14]);
     const updatedEtaDate = parseExcelDate(row[17]);
+    
+    // Parse Case Close Date (Col V - index 21)
+    const caseCloseDate = parseExcelDate(row[21]);
 
     // Logic: If Order Status is "Under Follow Up", it is Open.
     const isOpen = orderStatus === 'Under Follow Up';
     
     let calculatedPendency = 0;
+    
     if (isOpen && registrationDate) {
+      // Active Case: Days since registration to Today
       calculatedPendency = differenceInDays(today, registrationDate);
-    } else if (row[22]) {
-        // If provided in Col W and valid number
-        calculatedPendency = Number(row[22]) || 0;
+    } else {
+        // Closed Case:
+        // Priority 1: Use 'Pending Days' from Excel (Col W - index 22)
+        if (row[22]) {
+             calculatedPendency = Number(row[22]) || 0;
+        } 
+        // Priority 2: Calculate difference between Close Date and Registration Date
+        else if (caseCloseDate && registrationDate) {
+             calculatedPendency = differenceInDays(caseCloseDate, registrationDate);
+        }
     }
 
     processed.push({
@@ -83,9 +95,9 @@ export const processRawData = (jsonData: any[]): LogisticsCase[] => {
       updatedEta: updatedEtaDate ? format(updatedEtaDate, 'MMM dd, yyyy') : String(row[17] || ''),
       others: String(row[18] || ''),
       caseStatus: String(row[20] || ''),
-      caseCloseDate: parseExcelDate(row[21]),
+      caseCloseDate: caseCloseDate,
       pendingDays: Number(row[22]) || 0,
-      calculatedPendency,
+      calculatedPendency: Math.max(0, calculatedPendency), // Ensure no negative days
       isOpen
     });
   }
